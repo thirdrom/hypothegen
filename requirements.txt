@@ -1,0 +1,16 @@
+langgraph
+langchain
+langchain-openai
+chromadb
+streamlit
+pymupdf
+pandas
+openpyxl
+python-docx
+reportlab
+requests
+pydantic
+networkx
+pyvis
+networkx
+pyvis
