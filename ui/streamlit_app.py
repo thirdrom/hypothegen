@@ -44,6 +44,8 @@ from app.graph import build_graph  # noqa: E402
 from app.ranking import DEFAULT_WEIGHTS, rank  # noqa: E402
 from langgraph.types import Command  # noqa: E402
 
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
 st.set_page_config(page_title="Генератор гипотез", layout="wide")
 
 
@@ -88,6 +90,29 @@ st.title("Генератор исследовательских гипотез")
 # 1. Форма ввода
 # ---------------------------------------------------------------------------
 if st.session_state.stage == "input":
+    with st.expander("📁 База знаний (опционально — можно и не трогать, если data/ уже заполнена)"):
+        existing_files = sorted(
+            p.name for p in DATA_DIR.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+        ) if DATA_DIR.exists() else []
+        if existing_files:
+            st.caption(f"Сейчас в data/ уже лежит {len(existing_files)} файл(ов): {', '.join(existing_files)}")
+        else:
+            st.caption("data/ сейчас пуста — без файлов поиск по источникам не найдёт ничего (retrieved=0).")
+ 
+        uploaded_files = st.file_uploader(
+            "Загрузить документы (PDF/XLSX/XLS/CSV/TXT) — добавятся к тому, что уже есть в data/",
+            type=[ext.lstrip(".") for ext in sorted(SUPPORTED_EXTENSIONS)],
+            accept_multiple_files=True,
+        )
+        if uploaded_files and st.button("Загрузить и переиндексировать"):
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            for uploaded in uploaded_files:
+                (DATA_DIR / uploaded.name).write_bytes(uploaded.getvalue())
+            with st.spinner("Индексирую data/ (полная пересборка, файлы с тем же именем перезаписываются)..."):
+                ingest(str(DATA_DIR))
+            st.success(f"Загружено {len(uploaded_files)} файл(ов) и переиндексировано.")
+            st.rerun()
+
     with st.form("query_form"):
         query = st.text_area(
             "Задача",
@@ -304,3 +329,4 @@ elif st.session_state.stage == "done":
     if st.button("Начать заново"):
         reset_session()
         st.rerun()
+        
