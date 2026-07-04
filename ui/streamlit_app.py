@@ -31,6 +31,14 @@ import streamlit as st
 # добавляем корень проекта в sys.path, иначе `from app...` не найдётся.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# ВАЖНО: Streamlit Cloud хранит ключи в st.secrets (TOML-форма в веб-интерфейсе),
+# а НЕ в переменных окружения. Но app/llm.py и app/tools/semscholar.py читают
+# конфигурацию через os.getenv(...) на уровне модуля — то есть один раз, в
+# момент импорта. Поэтому секреты нужно скопировать в os.environ ДО того, как
+# ниже импортируется app.graph (который импортирует app.llm). Локально, если
+# .streamlit/secrets.toml не создан, st.secrets кидает исключение при попытке
+# перечислить ключи — это ожидаемо (обычный локальный запуск использует
+# переменные окружения/.env, а не Streamlit secrets), просто пропускаем.
 try:
     for _key, _value in st.secrets.items():
         os.environ.setdefault(_key, str(_value))
@@ -41,9 +49,14 @@ from app.entity_graph import build_graph as build_entity_graph  # noqa: E402
 from app.entity_graph import extract_triples, render_pyvis_html  # noqa: E402
 from app.export import to_docx, to_pdf, to_tasks_csv, to_tasks_json  # noqa: E402
 from app.graph import build_graph  # noqa: E402
+from app.ingest import SUPPORTED_EXTENSIONS, ingest  # noqa: E402
 from app.ranking import DEFAULT_WEIGHTS, rank  # noqa: E402
 from langgraph.types import Command  # noqa: E402
 
+# Та же папка, что и для `python -m app.ingest data` из README — единственная
+# точка правды для корпуса что при запуске из терминала, что при загрузке
+# файлов через браузер ниже. Файлы, загруженные через UI, физически кладутся
+# сюда же и переиндексируются вместе с тем, что уже лежит в data/ на диске.
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 st.set_page_config(page_title="Генератор гипотез", layout="wide")
@@ -90,7 +103,7 @@ st.title("Генератор исследовательских гипотез")
 # 1. Форма ввода
 # ---------------------------------------------------------------------------
 if st.session_state.stage == "input":
-    with st.expander("📁 База знаний (опционально — можно и не трогать, если data/ уже заполнена)"):
+    with st.expander("📁 База знаний"):
         existing_files = sorted(
             p.name for p in DATA_DIR.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
         ) if DATA_DIR.exists() else []
@@ -98,7 +111,7 @@ if st.session_state.stage == "input":
             st.caption(f"Сейчас в data/ уже лежит {len(existing_files)} файл(ов): {', '.join(existing_files)}")
         else:
             st.caption("data/ сейчас пуста — без файлов поиск по источникам не найдёт ничего (retrieved=0).")
- 
+
         uploaded_files = st.file_uploader(
             "Загрузить документы (PDF/XLSX/XLS/CSV/TXT) — добавятся к тому, что уже есть в data/",
             type=[ext.lstrip(".") for ext in sorted(SUPPORTED_EXTENSIONS)],
@@ -329,4 +342,3 @@ elif st.session_state.stage == "done":
     if st.button("Начать заново"):
         reset_session()
         st.rerun()
-        
