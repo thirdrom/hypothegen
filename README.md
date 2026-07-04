@@ -1,35 +1,24 @@
-# Прототип: генератор и трассируемая проверка исследовательских гипотез
+# Генератор и трассируемая проверка исследовательских гипотез (Hypothegen)
 
-Хакатон, ~24ч. Стек: Python 3.11, LangGraph, LangChain, ChromaDB, Streamlit,
+Стек: Python 3.11, LangGraph, LangChain, ChromaDB, Streamlit,
 PyMuPDF, pandas, python-docx, reportlab, requests, pydantic, networkx, pyvis.
-
-## Принципы проекта
-
-- Один ответ = один файл или одна функция. Без лишних абстракций и "агентов".
-- Всё внешнее (LLM, Semantic Scholar) спрятано за интерфейс с мок-реализацией —
-  код запускается без ключей и сети (`app/llm.py`, `app/tools/semscholar.py`).
-- LLM всегда просим вернуть строгий JSON, парсим в pydantic-модели (`app/state.py`).
-- В реальном режиме (`LLM_USE_REAL=true`) сбой LLM/внешнего API **явно роняет
-  прогон**, а не тихо подменяется моком — см. раздел "Мок vs реальный режим".
-- Никаких TODO-заглушек в местах, реализованных по явному запросу.
 
 ## Структура проекта
 
 ```
 app/
-  state.py         # ЕДИНЫЙ источник правды: Chunk, Ref, Evidence, Hypothesis,
-                    # Critique, RankedHypothesis, Roadmap(Step), State (TypedDict)
-  llm.py           # единая точка вызова LLM: мок по умолчанию, OpenAI/OpenRouter
-                    # за флагом LLM_USE_REAL
+  state.py         # файл состояния: Chunk, Ref, Evidence, 
+                    Hypothesis, Critique, RankedHypothesis, Roadmap(Step), State (TypedDict)
+  llm.py           # вызов LLM
   ingest.py        # PDF/Excel/CSV/TXT -> чанки -> ChromaDB (./chroma)
-  retriever.py     # retrieve(query, k) -> list[Chunk] из ChromaDB
-  ranking.py       # score_hypothesis() (LLM-оценщик) + rank() (взвешенный score)
+  retriever.py     # retrieve(query, k) -> list[Chunk] из  ChromaDB
+  ranking.py       # score_hypothesis() (LLM-оценщик) + rank() (взвешенный scoring)
   export.py        # to_docx / to_pdf / to_tasks_csv / to_tasks_json
   entity_graph.py  # LLM-извлечение троек материал-свойство-процесс + networkx/pyvis
   graph.py         # сборка графа LangGraph, CLI-демо (python app/graph.py)
   tools/
     semscholar.py  # search_external(): мок по умолчанию, реальный API за флагом
-  nodes/           # один узел — один файл
+  nodes/           
     planner.py       # query+constraints -> 3-5 subqueries
     researcher.py    # subqueries -> retrieved + external
     generator.py     # retrieved+external -> N=3 валидные Hypothesis
@@ -63,10 +52,10 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-## Мок vs реальный режим
+## Dry-run режим и вызов LLM
 
-По умолчанию **всё работает без ключей и сети** (`.env` можно не трогать).
-Чтобы включить настоящий LLM:
+По умолчанию **всё работает без ключей и сети** (`.env` можно не редактировать).
+Чтобы включить LLM:
 
 ```bash
 # Вариант А: OpenAI напрямую
@@ -78,13 +67,14 @@ export LLM_USE_REAL=true
 export OPENROUTER_API_KEY=sk-or-...
 export LLM_BASE_URL=https://openrouter.ai/api/v1
 export LLM_MODEL=openai/gpt-4o-mini
-```
 
-В реальном режиме сбой (нет ключа, сеть недоступна, не-JSON ответ) **явно
-роняет прогон** с полным traceback — по умолчанию узлы не откатываются на
-мок молча. Если для публичной демонстрации нужна устойчивость ценой
-прозрачности — включите явно: `LLM_ALLOW_MOCK_FALLBACK=true` (и/или
-`SEMSCHOLAR_ALLOW_MOCK_FALLBACK=true`).
+# Вариант В: Yandex AI Studio (OpenAI-совместимый API)
+export LLM_USE_REAL=true
+export YANDEX_API_KEY=AQVN...
+export YANDEX_FOLDER_ID=b1g...             # id каталога с включённым AI Studio
+export LLM_BASE_URL=https://ai.api.cloud.yandex.net/v1
+export LLM_MODEL=yandexgpt/latest          # короткое имя, БЕЗ gpt://
+```
 
 ## Как запустить
 
@@ -172,13 +162,11 @@ at.run(timeout=30)
 print('exceptions:', at.exception)
 "
 ```
-Ожидаемый вывод: `exceptions: ElementList()` (пусто — значит, страница
-отрисовалась без ошибок).
+Ожидаемый вывод: `exceptions: ElementList()` (пусто — значит, страница отрисовалась без ошибок).
 
 ## Критерий готовности установки
 
 ```bash
 pip install -r requirements.txt
 ```
-должен пройти без ошибок — это единственное жёсткое условие для проверки
-структуры проекта; остальное проверяется запуском выше.
+должен пройти без ошибок — это единственное жёсткое условие для проверки структуры проекта; остальное проверяется запуском выше.
