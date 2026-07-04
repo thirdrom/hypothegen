@@ -232,7 +232,7 @@ def _build_chunks(path: Path) -> list[Chunk]:
     return chunks
 
 
-def ingest(folder: str) -> None:
+def ingest(folder: str,  reset: bool = True) -> None:
     """
     Индексирует все поддерживаемые файлы из folder в локальный ChromaDB.
 
@@ -247,6 +247,12 @@ def ingest(folder: str) -> None:
         return
 
     client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
+    if reset:
+        try:
+            client.delete_collection(COLLECTION_NAME)
+            logger.info("Существующая коллекция '%s' удалена перед пересборкой", COLLECTION_NAME)
+        except Exception:
+            pass  # коллекции ещё не было — нечего удалять
     collection = client.get_or_create_collection(COLLECTION_NAME, embedding_function=HashingEmbedding())
 
     files = sorted(p for p in folder_path.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS)
