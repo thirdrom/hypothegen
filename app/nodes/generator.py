@@ -196,46 +196,39 @@ def _mock_hypotheses(query: str, constraints: dict, retrieved: list[Chunk], revi
     return {"hypotheses": hypotheses}
 
 
-def _validate_hypothesis(raw: dict, valid_source_ids: set[str], hyp_id: str) -> Hypothesis | None:
+def _validate_hypothesis(raw: dict, valid_source_ids: set[str], hyp_id: str) -> tuple[Hypothesis | None, str | None]:
     """
     Проверяет одну гипотезу-кандидата по правилам задачи и либо возвращает
-    валидную Hypothesis, либо None (гипотеза отбрасывается, не "чинится").
+    (Hypothesis, None), либо (None, причина_отказа) — гипотеза отбрасывается,
+    не "чинится". Причина возвращается явно (а не только в logging), чтобы
+    попасть в state["debate_log"] и быть видимой в UI/логах Streamlit Cloud —
+    без этого "0/3 валидных" невозможно диагностировать по одному числу.
     """
     try:
         evidence_raw = raw.get("evidence") or []
         if not evidence_raw:
-            logger.warning("Гипотеза %s отклонена: пустой evidence", hyp_id)
-            return None
+            return None, "пустой evidence"
 
         evidence = [Evidence(**e) for e in evidence_raw]
-        bad_source_ids = [e.source_id for e in evidence if e.source_id not in valid_source_ids]
+        bad_source_ids = [e.source_id for e in evidence if e.source_id.strip() not in valid_source_ids]
         if bad_source_ids:
-            logger.warning(
-                "Гипотеза %s отклонена: evidence ссылается на несуществующие source_id %s",
-                hyp_id,
-                bad_source_ids,
-            )
-            return None
+            return None, f"evidence ссылается на несуществующие source_id {bad_source_ids}"
 
         reasoning_steps = raw.get("reasoning_steps") or []
         if len(reasoning_steps) < 2:
-            logger.warning("Гипотеза %s отклонена: reasoning_steps короче 2 шагов", hyp_id)
-            return None
+            return None, f"reasoning_steps короче 2 шагов (получено {len(reasoning_steps)})"
 
         rejected_alternatives = raw.get("rejected_alternatives") or []
         if len(rejected_alternatives) < 1:
-            logger.warning("Гипотеза %s отклонена: нет rejected_alternatives", hyp_id)
-            return None
+            return None, "нет rejected_alternatives"
 
         conditions = raw.get("conditions") or {}
         if not conditions:
-            logger.warning("Гипотеза %s отклонена: пустые conditions", hyp_id)
-            return None
+            return None, "пустые conditions"
 
         validity_limits = (raw.get("validity_limits") or "").strip()
         if not validity_limits:
-            logger.warning("Гипотеза %s отклонена: пустой validity_limits", hyp_id)
-            return None
+            return None, "пустой validity_limits"
 
         hypothesis = Hypothesis(
             id=hyp_id,
@@ -257,10 +250,9 @@ def _validate_hypothesis(raw: dict, valid_source_ids: set[str], hyp_id: str) -> 
             cost_of_error=0.0,
             rationale="",
         )
-        return hypothesis
-    except Exception as exc:  # некорректная структура/типы полей от LLM
-        logger.warning("Гипотеза %s отклонена: не прошла схему Hypothesis (%s)", hyp_id, exc)
-        return None
+        return hypothesis, None
+    except Exception as exc:  # некорректная структура/типы полей от LLM (KeyError, ValidationError и т.п.)
+        return None, f"не прошла схему Hypothesis ({exc})"
 
 
 def generator(state: State) -> State:
@@ -293,9 +285,12 @@ def generator(state: State) -> State:
     validated: list[Hypothesis] = []
     for idx, raw in enumerate(raw_hypotheses):
         hyp_id = f"h{state['iteration']}_{idx}"
-        hypothesis = _validate_hypothesis(raw, valid_source_ids, hyp_id)
+        hypothesis, rejection_reason = _validate_hypothesis(raw, valid_source_ids, hyp_id)
         if hypothesis is not None:
             validated.append(hypothesis)
+        else:
+            logger.warning("Гипотеза %s отклонена: %s", hyp_id, rejection_reason)
+            state["debate_log"].append(f"generator: гипотеза {hyp_id} отклонена — {rejection_reason}")
 
     state["hypotheses"] = validated
     state["debate_log"].append(
