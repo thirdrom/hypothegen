@@ -51,36 +51,62 @@ CROSSREF_API = "https://api.crossref.org/works"
 ARXIV_API = "https://export.arxiv.org/api/query"
 REQUEST_TIMEOUT_SECONDS = 10
 
-# Новая модель Ref включает авторов и abstract (разделяют Validation Error, старый код не в курсе, JSON выглядит, как будто должны быть авторы + abstract)
+# Новая модель Ref включает авторов, abstract, и source_id (для обеспечения совместимости с Pydantic модели)
 class EnhancedRef(BaseModel):
     title: str
     url: str
     year: int | None = None
     authors: list[str] = []
     abstract: str = ""
+    source_id: str = ""  # Stable source_id generated from external APIs
+
+    def __init__(self, *args, **kwargs):
+        """Ensure source_id is properly set when creating EnhancedRef instances."""
+        super().__init__(*args, **kwargs)
+        # Ensure source_id defaults to title-based ID if not provided
+        if not self.source_id:
+            # Generate a consistent source_id based on title
+            self.source_id = f"enhanced_ref_{hash(self.title) % 10000}"  # Simple hash-based ID
 
     @classmethod
     def from_openalex(cls, data: dict) -> EnhancedRef:
         authors = []
-        auth_string = data.get("authorships", [])
-        if isinstance(auth_string, list):
-            authors = [auth.get("author", {}).get("display_name", "") for auth in auth_string if auth.get("author")]
+        if data.get("authorships"):
+            for author in data["authorships"]:
+                if "author" in author and author["author"]:
+                    author_info = author["author"]
+                    if isinstance(author_info, dict):
+                        name = author_info.get("display_name")
+                        if name:
+                            authors.append(name)
         elif data.get("authors"):
-            authors = [a.get("name", "") for a in data.get("authors") if isinstance(a, dict)]
+            for author in data["authors"]:
+                if isinstance(author, dict):
+                    authors.append(author.get("name", ""))
 
+        # Generate a stable source_id based on DOI or ID
+        paper_id = data.get("id", "")
+        if paper_id.startswith("https://openalex.org/"):
+            stable_source_id = "pa_openalex_" + paper_id.split("/")[-1]
+        elif paper_id.startswith("REPLACE"):
+            stable_source_id = f"pa_crossref_{paper_id.split('/')[-1]}"
+        else:
+            stable_source_id = f"pa_openalex_{paper_id}"
+        
         return cls(
             title=data.get("display_name", "Без названия"),
-            url=data.get("doi", f"https://openalex.org/{data.get('id', '').split('/')[-1]}"),
+            url=data.get("doi", f"https://openalex.org/works/{data.get('id', '').split('/')[-1]}"),
             year=data.get("publication_year"),
             authors=authors,
             abstract=data.get("abstract", ""),
+            source_id=stable_source_id,
         )
 
     @classmethod
     def from_crossref(cls, data: dict) -> EnhancedRef:
         authors = []
-        author_data = data.get("message", {}).get("author", [])
-        for author in author_data:
+        message_data = data.get("message", {})
+        for author in message_data.get("author", []):
             if isinstance(author, dict):
                 name_parts = []
                 if author.get("given"):
@@ -90,12 +116,15 @@ class EnhancedRef(BaseModel):
                 if name_parts:
                     authors.append(" ".join(name_parts))
 
+        # Generate a stable source_id based on DOI or title
+        stable_source_id = f"pc crossref/{data.get('id', '').split('/')[-1]}"
+        
         return cls(
-            title=data.get("message", {}).get("title", [""])[0] if data.get("message", {}).get("title") else "Без названия",
-            url=data.get("message", {}).get("URL", ""),
-            year=int(data.get("message", {}).get("published-print", {}).get("date-parts", [[None]])[0][0]) if data.get("message", {}).get("published-print") else None,
+            title=message_data.get("title", [""])[0] if message_data.get("title") else "Без названия",
+            url=message_data.get("URL", ""),
+            year=int(message_data.get("published-print", {}).get("date-parts", [[None]])[0][0]) if message_data.get("published-print") else None,
             authors=authors,
-            abstract=data.get("message", {}).get("abstract", ""),
+            abstract=message_data.get("abstract", ""),
         )
 
     @classmethod
@@ -104,6 +133,9 @@ class EnhancedRef(BaseModel):
         if "author" in entry and isinstance(entry["author"], list):
             authors = entry["author"]
 
+        # Generate a stable source_id based on ArXiv ID
+        stable_source_id = f"pa arxiv/{entry.get('id', '').replace(':', '')}"
+        
         return cls(
             title=entry.get("title", "Без названия"),
             url=entry.get("id", ""),
@@ -117,6 +149,7 @@ class EnhancedRef(BaseModel):
             title=self.title,
             url=self.url,
             year=self.year,
+            source_id=self.source_id,
         )
 
 
