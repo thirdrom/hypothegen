@@ -3,7 +3,7 @@
 
 Берёт state["subqueries"] (если планировщик их уже сформировал) или
 state["query"] как fallback, вызывает retrieve() по каждому подзапросу и
-складывает найденные фрагменты в state["retrieved"], а также
+кладёт найденные фрагменты в state["retrieved"], а также
 search_external() — во внешние ссылки state["external"].
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from app.retriever import retrieve
 from app.state import State
-from app.tools.semscholar import search_external
+from app.tools.paperpilot import search_external
 
 
 def researcher(state: State) -> State:
