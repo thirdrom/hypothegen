@@ -19,6 +19,7 @@ state["approved"], граф доходит до orchestrator и завершае
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import uuid
@@ -29,6 +30,12 @@ import streamlit as st
 # Позволяет запускать `streamlit run ui/streamlit_app.py` из любой директории:
 # добавляем корень проекта в sys.path, иначе `from app...` не найдётся.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+try:
+    for _key, _value in st.secrets.items():
+        os.environ.setdefault(_key, str(_value))
+except Exception:
+    pass
 
 from app.entity_graph import build_graph as build_entity_graph  # noqa: E402
 from app.entity_graph import extract_triples, render_pyvis_html  # noqa: E402
