@@ -223,4 +223,5 @@ def critic(state: State) -> State:
         f"critic: {len(critiques)} гипотез проверено — accept={n_accept}, "
         f"revise={n_revise}, reject={n_reject} (iteration была {iteration}, стала {state['iteration']})"
     )
+    state["critiques"] = critiques
     return state
