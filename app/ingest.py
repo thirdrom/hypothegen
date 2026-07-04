@@ -45,7 +45,7 @@ logger = logging.getLogger("ingest")
 
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 100
-CHROMA_PERSIST_DIR = "./chroma"
+CHROMA_PERSIST_DIR = str(Path(__file__).resolve().parent.parent / "chroma")
 COLLECTION_NAME = "corpus"
 EMBEDDING_DIM = 256
 
