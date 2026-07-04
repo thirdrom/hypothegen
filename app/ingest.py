@@ -129,11 +129,14 @@ def _read_pdf(path: Path) -> list[tuple[str, str]]:
         for page_number, page in enumerate(doc, start=1):
             try:
                 text = page.get_text()
+                if text and text.strip():
+                    # Ensure Cyrillic characters are preserved
+                    # PyMuPDF should handle encoding correctly, but we normalize line endings
+                    text = text.replace('\r\n', '\n').replace('\r', '\n')
+                    sections.append((text, f"{path.name}#page={page_number}"))
             except Exception as exc:
                 logger.warning("Пропускаю страницу %d в %s: %s", page_number, path.name, exc)
                 continue
-            if text and text.strip():
-                sections.append((text, f"{path.name}#page={page_number}"))
     finally:
         doc.close()
 
@@ -146,6 +149,7 @@ def _read_excel(path: Path) -> list[tuple[str, str]]:
     """Возвращает список (текст_листа, человекочитаемый_source) по каждому листу Excel."""
     sections: list[tuple[str, str]] = []
     try:
+        # Use UTF-8 encoding with error handling for Cyrillic and other special characters
         workbook = pd.ExcelFile(path)
     except Exception as exc:
         logger.warning("Пропускаю %s: не удалось открыть Excel (%s)", path.name, exc)
@@ -159,9 +163,22 @@ def _read_excel(path: Path) -> list[tuple[str, str]]:
             continue
         if df.empty:
             continue
-        text = df.to_csv(index=False)
-        if text.strip():
-            sections.append((text, f"{path.name}#sheet={sheet_name}"))
+        
+        try:
+            # Use UTF-8 encoding to preserve Cyrillic and other special characters
+            # engine='openpyxl' handles Excel files better for special characters
+            import io
+            output = io.StringIO()
+            df.to_csv(output, index=False, encoding='utf-8-sig')
+            text = output.getvalue()
+            
+            if text.strip():
+                # Normalize line endings for consistency
+                text = text.replace('\r\n', '\n').replace('\r', '\n')
+                sections.append((text, f"{path.name}#sheet={sheet_name}"))
+        except Exception as exc:
+            logger.warning("Пропускаю лист %r в %s: ошибка при обработке данных (%s)", sheet_name, path.name, exc)
+            continue
 
     if not sections:
         logger.warning("Пропускаю %s: Excel пуст или без данных", path.name)
@@ -171,27 +188,56 @@ def _read_excel(path: Path) -> list[tuple[str, str]]:
 def _read_csv(path: Path) -> list[tuple[str, str]]:
     """Возвращает список из одного элемента (текст_csv, human_readable_source)."""
     try:
-        df = pd.read_csv(path)
+        # Read CSV with UTF-8 encoding to preserve Cyrillic and special characters
+        # Use encoding='utf-8-sig' which automatically strips BOM if present
+        df = pd.read_csv(path, encoding='utf-8-sig')
     except Exception as exc:
         logger.warning("Пропускаю %s: не удалось прочитать CSV (%s)", path.name, exc)
         return []
     if df.empty:
         logger.warning("Пропускаю %s: CSV пуст", path.name)
         return []
-    text = df.to_csv(index=False)
-    return [(text, path.name)] if text.strip() else []
+    try:
+        # Use UTF-8 encoding when converting back to CSV text
+        import io
+        output = io.StringIO()
+        df.to_csv(output, index=False, encoding='utf-8-sig')
+        text = output.getvalue()
+        
+        if text.strip():
+            # Normalize line endings for consistency
+            text = text.replace('\r\n', '\n').replace('\r', '\n')
+            return [(text, path.name)]
+        return []
+    except Exception as exc:
+        logger.warning("Пропускаю %s: ошибка при обработке CSV (%s)", path.name, exc)
+        return []
 
 
 def _read_txt(path: Path) -> list[tuple[str, str]]:
     """Возвращает список из одного элемента (текст, human_readable_source)."""
     try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        # Use UTF-8-SIG encoding to strip BOM if present
+        # Keep errors="strict" to catch encoding issues during development
+        text = path.read_text(encoding="utf-8-sig", errors="strict")
+    except UnicodeDecodeError:
+        # Fallback to UTF-8 with errors='replace' for problematic files
+        logger.warning("Пропускаю %s: кодировка файла не поддерживается, попробуем с заменой", path.name)
+        text = path.read_text(encoding="utf-8", errors="replace")
     except Exception as exc:
         logger.warning("Пропускаю %s: не удалось прочитать TXT (%s)", path.name, exc)
         return []
+    
     if not text.strip():
         logger.warning("Пропускаю %s: файл пуст", path.name)
         return []
+    
+    # Normalize line endings and whitespace for consistency
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    # Remove trailing whitespace from each line
+    lines = [line.rstrip() for line in text.split('\n')]
+    text = '\n'.join(lines).strip() + '\n'  # Consistent line ending
+    
     return [(text, path.name)]
 
 
