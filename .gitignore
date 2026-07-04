@@ -6,8 +6,9 @@ __pycache__/
 # локальный ChromaDB-индекс — генерируется из data/, не хранится в VCS
 chroma/
 
-# секреты — только .env.example коммитим, .env никогда
+# секреты — только .env.example коммитим, .env и Streamlit secrets никогда
 .env
+.streamlit/secrets.toml
 
 # корпус пользователя — данные ГОКа/лаборатории не публикуются в открытый репозиторий
 data/*
