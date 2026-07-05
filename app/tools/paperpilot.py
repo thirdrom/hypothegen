@@ -117,7 +117,7 @@ class EnhancedRef(BaseModel):
                     authors.append(" ".join(name_parts))
 
         # Generate a stable source_id based on DOI or title
-        stable_source_id = f"pc crossref/{data.get('id', '').split('/')[-1]}"
+        stable_source_id = f"pc_crossref_{data.get('id', '').split('/')[-1]}"
         
         return cls(
             title=message_data.get("title", [""])[0] if message_data.get("title") else "Без названия",
@@ -125,6 +125,7 @@ class EnhancedRef(BaseModel):
             year=int(message_data.get("published-print", {}).get("date-parts", [[None]])[0][0]) if message_data.get("published-print") else None,
             authors=authors,
             abstract=message_data.get("abstract", ""),
+            source_id=stable_source_id,
         )
 
     @classmethod
@@ -134,7 +135,11 @@ class EnhancedRef(BaseModel):
             authors = entry["author"]
 
         # Generate a stable source_id based on ArXiv ID
-        stable_source_id = f"pa arxiv/{entry.get('id', '').replace(':', '')}"
+        arxiv_id = entry.get("id", "")
+        if arxiv_id.startswith("arXiv:"):
+            stable_source_id = f"pa_arxiv_{arxiv_id[5:]}"
+        else:
+            stable_source_id = f"pa_arxiv_{arxiv_id}"
         
         return cls(
             title=entry.get("title", "Без названия"),
@@ -142,6 +147,7 @@ class EnhancedRef(BaseModel):
             year=int(entry.get("published", "").split("-")[0]) if entry.get("published") else None,
             authors=authors,
             abstract=entry.get("summary", ""),
+            source_id=stable_source_id,
         )
 
     def to_ref(self) -> Ref:
@@ -149,6 +155,8 @@ class EnhancedRef(BaseModel):
             title=self.title,
             url=self.url,
             year=self.year,
+            authors=self.authors,
+            abstract=self.abstract,
             source_id=self.source_id,
         )
 
@@ -157,7 +165,7 @@ def _mock_search(query: str, limit: int) -> list[EnhancedRef]:
     """Детерминированный мок без сети/ключей — настоящий мок, но более реалистичный.
 
     Возвращает стабильный набор papers с разными авторами, годами и URL — так что
-    данные теперь являются настоящими (пас такую трассировку, которую ожидает генератор),
+    данные теперь являются настоящими (пропускают такую трассировку, которую ожидает генератор),
     но без network-адресов/ключей. Для случаев, когда все реальные API недоступны,
     fallback—this is deterministic и recovery-resistant.
     """
@@ -175,6 +183,7 @@ def _mock_search(query: str, limit: int) -> list[EnhancedRef]:
             year=2024 - (i % 3),
             authors=author_options[i % len(author_options)],
             abstract=f"Текст abstract real paper {i + 1} about {query}.",
+            source_id=f"pa_arxiv_{i + 1}",
         )
         for i in range(min(limit, 3))
     ]

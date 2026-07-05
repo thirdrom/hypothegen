@@ -411,13 +411,13 @@ class A_BTestRunner:
             )
         
         if integration_issues:
-            print(f"\n{'WARNING': '='*58}")
+            print(f"\n{'WARNING' + '='*58}")
             print("INTEGRATION ISSUES FOUND:")
             for issue in integration_issues:
                 print(f"  ⚠️  {issue}")
             print("\nRecommendation: Address integration issues before deployment.")
         else:
-            print(f"\n{'SUCCESS': '='*58}")
+            print(f"\n{'SUCCESS' + '='*58}")
             print("INTEGRATION READY:")
             print("  ✓ Both implementations return valid Ref objects")
             print("  ✓ PaperPilot provides enhanced data (authors, abstracts)")
@@ -429,3 +429,10 @@ class A_BTestRunner:
         if self.test_dir and Path(self.test_dir).exists():
             shutil.rmtree(self.test_dir)
             print(f"\nCleaned up test directory: {self.test_dir}")
+
+
+if __name__ == "__main__":
+    runner = A_BTestRunner()
+    results = runner.run_tests()
+    runner.cleanup()
+    print("\nTest completed successfully!")

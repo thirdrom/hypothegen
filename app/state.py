@@ -23,11 +23,14 @@ class Chunk(BaseModel):
 
 
 class Ref(BaseModel):
-    """Внешняя ссылка (например, из Semantic Scholar)."""
+    """Внешняя ссылка (например, из Semantic Scholar / PaperPilot)."""
 
     title: str
     url: str
     year: int | None = None
+    authors: list[str] = []
+    abstract: str = ""
+    source_id: str = ""
 
 
 class Evidence(BaseModel):

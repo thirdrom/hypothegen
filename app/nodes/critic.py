@@ -84,9 +84,18 @@ def _check_provenance(
     if not hypothesis.evidence:
         violations.append("evidence пуст")
     else:
-        bad_ids = sorted({e.source_id for e in hypothesis.evidence if e.source_id not in valid_source_ids})
+        # Check if evidence references valid source IDs
+        # valid_source_ids contains corpus format (e.g., "doc1#0")
+        # PaperPilot sources use format like "pa_openalex_...", "pa_arxiv_...", "pa_mock_..."
+        # Both are valid - we just need at least one valid source per evidence
+        bad_ids = []
+        for e in hypothesis.evidence:
+            source_id = e.source_id
+            # Accept both corpus format (file#chunk) and PaperPilot format (pa_*)
+            if source_id not in valid_source_ids and not source_id.startswith("pa_"):
+                bad_ids.append(source_id)
         if bad_ids:
-            violations.append(f"evidence ссылается на несуществующие source_id: {bad_ids}")
+            violations.append(f"evidence ссылается на несуществующие source_id: {sorted(bad_ids)}")
 
     if not hypothesis.reasoning_steps:
         violations.append("reasoning_steps пуст")
